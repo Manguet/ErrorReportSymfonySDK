@@ -18,8 +18,11 @@
         "symfony/event-dispatcher": "^4.4|^5.0|^6.0|^7.0"
     },
     "require-dev": {
+        "roave/security-advisories": "dev-latest",
         "phpunit/phpunit": "^8.5|^9.0|^10.0",
-        "symfony/phpunit-bridge": "^4.4|^5.0|^6.0|^7.0"
+        "symfony/phpunit-bridge": "^4.4|^5.0|^6.0|^7.0",
+        "friendsofphp/php-cs-fixer": "^3.0",
+        "phpstan/phpstan": "^1.0"
     },
     "autoload": {
         "psr-4": {
@@ -32,8 +35,8 @@
         }
     },
     "scripts": {
-        "test": "phpunit --no-coverage",
-        "test-coverage": "phpunit --coverage-html coverage-html --coverage-text",
+        "test": "phpunit",
+        "test-coverage": "phpunit --coverage-html coverage",
         "test-coverage-clover": "phpunit --coverage-clover coverage.xml"
     },
     "extra": {

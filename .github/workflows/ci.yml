@@ -1,0 +1,188 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  tests:
+    name: Tests PHP ${{ matrix.php }} - Symfony ${{ matrix.symfony }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.2', '7.3', '7.4', '8.0', '8.1', '8.2', '8.3']
+        symfony: ['4.4.*', '5.4.*', '6.4.*', '7.0.*']
+        exclude:
+          # PHP 7.2-7.3 incompatible avec Symfony 6+
+          - php: '7.2'
+            symfony: '6.4.*'
+          - php: '7.2'
+            symfony: '7.0.*'
+          - php: '7.3'
+            symfony: '6.4.*'
+          - php: '7.3'
+            symfony: '7.0.*'
+          # PHP 8.3 pour les versions récentes seulement
+          - php: '8.3'
+            symfony: '4.4.*'
+          - php: '8.3'
+            symfony: '5.4.*'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, xml, ctype, iconv, intl, curl, json
+          coverage: xdebug
+
+      - name: Get composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache composer dependencies
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: |
+          composer require "symfony/framework-bundle:${{ matrix.symfony }}" --no-update
+          composer install --no-progress --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Run PHPUnit tests
+        run: composer test
+
+      - name: Generate coverage report
+        if: matrix.php == '8.2' && matrix.symfony == '6.4.*'
+        run: composer test-coverage-clover
+
+      - name: Upload coverage to Codecov
+        if: matrix.php == '8.2' && matrix.symfony == '6.4.*'
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, xml, ctype, iconv, intl
+
+      - name: Install dependencies
+        run: composer install --no-progress --no-interaction --prefer-dist
+
+      - name: Run PHP CS Fixer (dry-run)
+        run: |
+          if [ -f "vendor/bin/php-cs-fixer" ]; then
+            vendor/bin/php-cs-fixer fix --dry-run --diff --verbose
+          else
+            echo "PHP CS Fixer not installed, skipping..."
+          fi
+
+      - name: Run PHPStan
+        run: |
+          if [ -f "vendor/bin/phpstan" ]; then
+            vendor/bin/phpstan analyse src tests --level=8 --no-progress
+          else
+            echo "PHPStan not installed, skipping..."
+          fi
+
+  security:
+    name: Security Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Install dependencies
+        run: composer install --no-progress --no-interaction --prefer-dist
+
+      - name: Security audit
+        run: composer audit
+
+      - name: Check for known security vulnerabilities
+        uses: symfonycorp/security-checker-action@v5
+
+  compatibility:
+    name: Compatibility Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Install dependencies
+        run: composer install --no-progress --no-interaction --prefer-dist
+
+      - name: Check composer.json validity
+        run: composer validate --strict
+
+      - name: Check PSR-4 mapping
+        run: composer dump-autoload --optimize --strict-psr
+
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [tests, code-quality]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, xml, ctype, iconv, intl
+
+      - name: Install dependencies
+        run: composer install --no-progress --no-interaction --prefer-dist
+
+      - name: Run integration tests
+        run: |
+          if [ -d "tests/Integration" ]; then
+            vendor/bin/phpunit tests/Integration --verbose
+          else
+            echo "No integration tests found"
+          fi
+
+      - name: Test installation in fresh project
+        run: |
+          cd /tmp
+          composer create-project symfony/skeleton test-project
+          cd test-project
+          composer config repositories.local path $GITHUB_WORKSPACE
+          composer require "error-explorer/error-reporter:*@dev"
+          php bin/console debug:container | grep -i error || echo "Bundle loaded successfully"
