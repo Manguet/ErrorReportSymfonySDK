@@ -1,0 +1,23 @@
+# Error Reporter Bundle Configuration
+# Copy this file to your Symfony application's config/packages/ directory
+
+error_reporter:
+    # Required: Your Error Explorer webhook URL
+    webhook_url: '%env(ERROR_WEBHOOK_URL)%'
+    
+    # Required: Unique project token from Error Explorer
+    token: '%env(ERROR_WEBHOOK_TOKEN)%'
+    
+    # Required: Project name identifier
+    project_name: '%env(PROJECT_NAME)%'
+    
+    # Optional: Enable/disable error reporting (default: true)
+    enabled: '%env(bool:ERROR_REPORTING_ENABLED)%'
+    
+    # Optional: List of exception classes to ignore
+    ignore_exceptions:
+        - 'Symfony\Component\Security\Core\Exception\AccessDeniedException'
+        - 'Symfony\Component\HttpKernel\Exception\NotFoundHttpException'
+        - 'Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException'
+        # Add your own exceptions to ignore here
+        # - 'App\Exception\ExpectedException'
