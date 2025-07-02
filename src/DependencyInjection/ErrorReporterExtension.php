@@ -51,7 +51,11 @@ final class ErrorReporterExtension extends Extension
             '$environment' => '%kernel.environment%',
         ]);
 
-        $definition->addTag('kernel.event_listener');
+        $definition->addTag('kernel.event_listener', [
+            'event' => 'kernel.exception',
+            'method' => 'onKernelException',
+            'priority' => 0
+        ]);
 
         $container->setDefinition('error_reporter.error_reporting_listener', $definition);
     }
@@ -59,7 +63,7 @@ final class ErrorReporterExtension extends Extension
     private function registerErrorReporterInitializer(ContainerBuilder $container): void
     {
         $definition = new Definition(ErrorReporterInitializer::class, [
-            '$errorReporter' => new Reference('error_reporter.webhook_error_reporter'),
+            '$webhookErrorReporter' => new Reference('error_reporter.webhook_error_reporter'),
         ]);
 
         $container->setDefinition('error_reporter.initializer', $definition);
