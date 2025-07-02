@@ -4,6 +4,7 @@ namespace ErrorExplorer\ErrorReporter\Tests\Unit\EventListener;
 
 use ErrorExplorer\ErrorReporter\EventListener\ErrorReportingListener;
 use ErrorExplorer\ErrorReporter\Service\WebhookErrorReporter;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -30,14 +31,9 @@ class RouteMethodNotAllowedError extends \Exception {}
 
 class ErrorReportingListenerTest extends TestCase
 {
-    /** @var WebhookErrorReporter */
-    private $webhookReporter;
-
-    /** @var ErrorReportingListener */
-    private $listener;
-
-    /** @var HttpKernelInterface */
-    private $kernel;
+    private WebhookErrorReporter|MockObject $webhookReporter;
+    private ErrorReportingListener $listener;
+    private HttpKernelInterface|MockObject $kernel;
 
     protected function setUp(): void
     {
@@ -46,15 +42,8 @@ class ErrorReportingListenerTest extends TestCase
         $this->listener = new ErrorReportingListener($this->webhookReporter, 'test');
     }
 
-    public function testGetSubscribedEvents()
-    {
-        $events = ErrorReportingListener::getSubscribedEvents();
 
-        $this->assertArrayHasKey(KernelEvents::EXCEPTION, $events);
-        $this->assertEquals(['onKernelException', 0], $events[KernelEvents::EXCEPTION]);
-    }
-
-    public function testOnKernelExceptionWithBasicException()
+    public function testOnKernelExceptionWithBasicException(): void
     {
         $exception = new \Exception('Test error');
         $request = Request::create('/test');
@@ -78,7 +67,7 @@ class ErrorReportingListenerTest extends TestCase
         $this->listener->onKernelException($event);
     }
 
-    public function testOnKernelExceptionWithHttpException()
+    public function testOnKernelExceptionWithHttpException(): void
     {
         $exception = new NotFoundHttpException('Page not found');
         $request = Request::create('/missing-page');
@@ -102,7 +91,7 @@ class ErrorReportingListenerTest extends TestCase
         $this->listener->onKernelException($event);
     }
 
-    public function testDetermineHttpStatusWithNotFound()
+    public function testDetermineHttpStatusWithNotFound(): void
     {
         $exception = new EntityNotFoundError('Entity not found');
         $request = Request::create('/test');
@@ -126,7 +115,7 @@ class ErrorReportingListenerTest extends TestCase
         $this->listener->onKernelException($event);
     }
 
-    public function testDetermineHttpStatusWithAccessDenied()
+    public function testDetermineHttpStatusWithAccessDenied(): void
     {
         $exception = new UserAccessDeniedError('User access denied');
         $request = Request::create('/test');
@@ -150,7 +139,7 @@ class ErrorReportingListenerTest extends TestCase
         $this->listener->onKernelException($event);
     }
 
-    public function testDetermineHttpStatusWithUnauthorized()
+    public function testDetermineHttpStatusWithUnauthorized(): void
     {
         $exception = new UnauthorizedUserError('Unauthorized user access');
         $request = Request::create('/test');
@@ -174,7 +163,7 @@ class ErrorReportingListenerTest extends TestCase
         $this->listener->onKernelException($event);
     }
 
-    public function testDetermineHttpStatusWithBadRequest()
+    public function testDetermineHttpStatusWithBadRequest(): void
     {
         $exception = new InvalidBadRequestError('Invalid bad request validation failed');
         $request = Request::create('/test');
@@ -198,7 +187,7 @@ class ErrorReportingListenerTest extends TestCase
         $this->listener->onKernelException($event);
     }
 
-    public function testDetermineHttpStatusWithMethodNotAllowed()
+    public function testDetermineHttpStatusWithMethodNotAllowed(): void
     {
         $exception = new RouteMethodNotAllowedError('Route method not allowed for this route');
         $request = Request::create('/test');
@@ -222,7 +211,7 @@ class ErrorReportingListenerTest extends TestCase
         $this->listener->onKernelException($event);
     }
 
-    public function testDetermineHttpStatusDefault()
+    public function testDetermineHttpStatusDefault(): void
     {
         $exception = new \RuntimeException('Unknown error type');
         $request = Request::create('/test');
@@ -246,7 +235,7 @@ class ErrorReportingListenerTest extends TestCase
         $this->listener->onKernelException($event);
     }
 
-    public function testEnvironmentIsPassedCorrectly()
+    public function testEnvironmentIsPassedCorrectly(): void
     {
         $listener = new ErrorReportingListener($this->webhookReporter, 'production');
 

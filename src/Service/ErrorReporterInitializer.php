@@ -1,29 +1,21 @@
 <?php
 
+declare(strict_types=1);
+
 namespace ErrorExplorer\ErrorReporter\Service;
 
 use ErrorExplorer\ErrorReporter\ErrorReporter;
 
-/**
- * Service to initialize the static ErrorReporter facade
- */
-class ErrorReporterInitializer
+final class ErrorReporterInitializer
 {
-    /** @var WebhookErrorReporter */
-    private $webhookErrorReporter;
-
-    public function __construct(WebhookErrorReporter $webhookErrorReporter)
-    {
-        $this->webhookErrorReporter = $webhookErrorReporter;
-        
-        // Initialize the static facade
+    public function __construct(
+        private readonly WebhookErrorReporter $webhookErrorReporter
+    ) {
+        // Initialize the static facade with dependency injection
         ErrorReporter::setInstance($this->webhookErrorReporter);
     }
 
-    /**
-     * Get the underlying WebhookErrorReporter service
-     */
-    public function getWebhookErrorReporter()
+    public function getWebhookErrorReporter(): WebhookErrorReporter
     {
         return $this->webhookErrorReporter;
     }

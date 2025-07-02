@@ -1,164 +1,163 @@
 <?php
 
+declare(strict_types=1);
+
 namespace ErrorExplorer\ErrorReporter\Service;
 
 use DateTimeInterface;
-use Symfony\Component\HttpClient\HttpClient;
-use Symfony\Contracts\HttpClient\HttpClientInterface;
+use DateTimeImmutable;
+use ErrorExplorer\ErrorReporter\Enum\LogLevel;
+use ErrorExplorer\ErrorReporter\ValueObject\ErrorFingerprint;
 use Psr\Log\LoggerInterface;
-use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Component\HttpFoundation\Request;
-use ErrorExplorer\ErrorReporter\Service\BreadcrumbManager;
+use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Throwable;
 
 class WebhookErrorReporter
 {
-    /** @var HttpClientInterface */
-    private $httpClient;
-    /** @var LoggerInterface|null */
-    private $logger;
-    /** @var RequestStack|null */
-    private $requestStack;
-    /** @var string */
-    private $webhookUrl;
-    /** @var string */
-    private $token;
-    /** @var string */
-    private $projectName;
-    /** @var bool */
-    private $enabled;
-    /** @var array */
-    private $ignoredExceptions;
+    private const SENSITIVE_KEYS = ['password', 'token', 'secret', 'key', 'api_key', 'authorization'];
+    private const SENSITIVE_HEADERS = ['authorization', 'cookie', 'x-api-key', 'x-auth-token'];
 
     public function __construct(
-        $webhookUrl,
-        $token,
-        $projectName,
-        $enabled = true,
-        array $ignoredExceptions = [],
-        HttpClientInterface $httpClient = null,
-        LoggerInterface $logger = null,
-        RequestStack $requestStack = null
-    ) {
-        $this->webhookUrl = $webhookUrl;
-        $this->token = $token;
-        $this->projectName = $projectName;
-        $this->enabled = $enabled;
-        $this->ignoredExceptions = $ignoredExceptions;
-        $this->httpClient = $httpClient ?: HttpClient::create();
-        $this->logger = $logger;
-        $this->requestStack = $requestStack;
+        private readonly string $webhookUrl,
+        private readonly string $token,
+        private readonly string $projectName,
+        private readonly bool $enabled = true,
+        private readonly array $ignoredExceptions = [],
+        private readonly int $timeout = 5,
+        private readonly int $maxRetries = 3,
+        private readonly LogLevel $minimumLevel = LogLevel::ERROR,
+        private readonly ?HttpClientInterface $httpClient = null,
+        private readonly ?LoggerInterface $logger = null,
+        private readonly ?RequestStack $requestStack = null,
+    )
+    {
     }
 
-    public function reportError(\Throwable $exception, $environment = 'prod', $httpStatus = null, Request $request = null)
+    private function getHttpClient(): HttpClientInterface
     {
-        if (!$this->enabled) {
-            return;
-        }
+        return $this->httpClient ?? HttpClient::create();
+    }
 
-        if ($this->shouldIgnoreException($exception)) {
+    public function reportError(
+        Throwable $exception,
+        string    $environment = 'prod',
+        ?int      $httpStatus = null,
+        ?Request  $request = null
+    ): void
+    {
+        if (!$this->enabled || $this->shouldIgnoreException($exception)) {
             return;
         }
 
         try {
             $payload = $this->buildPayload($exception, $environment, $httpStatus, $request);
             $this->sendWebhook($payload);
-        } catch (\Throwable $e) {
-            if ($this->logger) {
-                $this->logger->error('Failed to report error to Error Explorer', [
-                    'exception' => $e->getMessage(),
-                    'original_error' => $exception->getMessage()
-                ]);
-            }
+        } catch (Throwable $e) {
+            $this->logger?->error('Failed to report error to Error Explorer', [
+                'exception' => $e->getMessage(),
+                'original_error' => $exception->getMessage(),
+                'exception_class' => $exception::class,
+            ]);
         }
     }
 
-    /**
-     * Report a custom message (not an exception)
-     */
-    public function reportMessage($message, $environment = 'prod', $httpStatus = null, Request $request = null, $level = 'error', array $context = [])
+    public function reportMessage(
+        string          $message,
+        string          $environment = 'prod',
+        ?int            $httpStatus = null,
+        ?Request        $request = null,
+        LogLevel|string $level = LogLevel::ERROR,
+        array           $context = []
+    ): void
     {
         if (!$this->enabled) {
             return;
         }
 
+        $logLevel = $level instanceof LogLevel ? $level : LogLevel::from($level);
+
+        if ($logLevel->getPriority() < $this->minimumLevel->getPriority()) {
+            return;
+        }
+
         try {
-            $payload = $this->buildMessagePayload($message, $environment, $httpStatus, $request, $level, $context);
+            $payload = $this->buildMessagePayload($message, $environment, $httpStatus, $request, $logLevel, $context);
             $this->sendWebhook($payload);
-        } catch (\Throwable $e) {
-            if ($this->logger) {
-                $this->logger->error('Failed to report message to Error Explorer', [
-                    'exception' => $e->getMessage(),
-                    'original_message' => $message
-                ]);
-            }
+        } catch (Throwable $e) {
+            $this->logger?->error('Failed to report message to Error Explorer', [
+                'exception' => $e->getMessage(),
+                'original_message' => $message,
+            ]);
         }
     }
 
-    private function shouldIgnoreException(\Throwable $exception)
+    private function shouldIgnoreException(Throwable $exception): bool
     {
-        $exceptionClass = get_class($exception);
+        $exceptionClass = $exception::class;
 
-        foreach ($this->ignoredExceptions as $ignoredException) {
-            if ($exceptionClass === $ignoredException || is_subclass_of($exceptionClass, $ignoredException)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_reduce(
+            $this->ignoredExceptions,
+            fn(bool $carry, string $ignoredException): bool => $carry || $exceptionClass === $ignoredException || is_subclass_of($exceptionClass, $ignoredException),
+            false
+        );
     }
 
-    private function buildPayload(\Throwable $exception, $environment, $httpStatus, Request $request = null)
+    private function buildPayload(
+        Throwable $exception,
+        string    $environment,
+        ?int      $httpStatus,
+        ?Request  $request = null
+    ): array
     {
-        $request = $request ?: ($this->requestStack ? $this->requestStack->getCurrentRequest() : null);
+        $request ??= $this->requestStack?->getCurrentRequest();
+        $fingerprint = ErrorFingerprint::fromException($exception);
 
         $payload = [
             'message' => $exception->getMessage(),
-            'exception_class' => get_class($exception),
+            'exception_class' => $exception::class,
             'stack_trace' => $exception->getTraceAsString(),
             'file' => $exception->getFile(),
             'line' => $exception->getLine(),
             'project' => $this->projectName,
             'environment' => $environment,
-            'timestamp' => (new \DateTime())->format(DateTimeInterface::ATOM),
-            'fingerprint' => $this->generateFingerprint($exception)
+            'timestamp' => (new DateTimeImmutable())->format(DateTimeInterface::ATOM),
+            'fingerprint' => $fingerprint->toString(),
+            'level' => LogLevel::ERROR->value,
         ];
 
-        if ($httpStatus) {
+        if ($httpStatus !== null) {
             $payload['http_status'] = $httpStatus;
         }
 
-        if ($request) {
-            $payload['request'] = [
-                'url' => $request->getUri(),
-                'method' => $request->getMethod(),
-                'route' => $request->attributes->get('_route'),
-                'ip' => $request->getClientIp(),
-                'user_agent' => $request->headers->get('User-Agent'),
-                'parameters' => $this->sanitizeParameters($request->request->all()),
-                'query' => $this->sanitizeParameters($request->query->all()),
-                'headers' => $this->sanitizeHeaders($request->headers->all())
-            ];
+        if ($request !== null) {
+            $payload['request'] = $this->buildRequestContext($request);
         }
 
-        $payload['server'] = [
-            'php_version' => PHP_VERSION,
-            'memory_usage' => memory_get_usage(),
-            'memory_peak' => memory_get_peak_usage()
-        ];
+        $payload['server'] = $this->buildServerContext();
 
-        // Add breadcrumbs/events for context
         $breadcrumbs = BreadcrumbManager::getBreadcrumbs();
-        if (!empty($breadcrumbs)) {
+        if ($breadcrumbs !== []) {
             $payload['breadcrumbs'] = $breadcrumbs;
         }
 
         return $payload;
     }
 
-    private function buildMessagePayload($message, $environment, $httpStatus, Request $request = null, $level = 'error', array $context = [])
+    private function buildMessagePayload(
+        string   $message,
+        string   $environment,
+        ?int     $httpStatus,
+        ?Request $request,
+        LogLevel $level,
+        array    $context
+    ): array
     {
-        $request = $request ?: ($this->requestStack ? $this->requestStack->getCurrentRequest() : null);
-        
+        $request ??= $this->requestStack?->getCurrentRequest();
+        $fingerprint = ErrorFingerprint::fromMessage($message, $level->value);
+
         $payload = [
             'message' => $message,
             'exception_class' => 'CustomMessage',
@@ -167,131 +166,132 @@ class WebhookErrorReporter
             'line' => null,
             'project' => $this->projectName,
             'environment' => $environment,
-            'timestamp' => (new \DateTime())->format(DateTimeInterface::ATOM),
-            'fingerprint' => $this->generateMessageFingerprint($message, $level),
-            'level' => $level,
-            'context' => $context
+            'timestamp' => (new DateTimeImmutable())->format(DateTimeInterface::ATOM),
+            'fingerprint' => $fingerprint->toString(),
+            'level' => $level->value,
+            'context' => $context,
         ];
 
-        if ($httpStatus) {
+        if ($httpStatus !== null) {
             $payload['http_status'] = $httpStatus;
         }
 
-        if ($request) {
-            $payload['request'] = [
-                'url' => $request->getUri(),
-                'method' => $request->getMethod(),
-                'route' => $request->attributes->get('_route'),
-                'ip' => $request->getClientIp(),
-                'user_agent' => $request->headers->get('User-Agent'),
-                'parameters' => $this->sanitizeParameters($request->request->all()),
-                'query' => $this->sanitizeParameters($request->query->all()),
-                'headers' => $this->sanitizeHeaders($request->headers->all())
-            ];
+        if ($request !== null) {
+            $payload['request'] = $this->buildRequestContext($request);
         }
 
-        $payload['server'] = [
-            'php_version' => PHP_VERSION,
-            'memory_usage' => memory_get_usage(),
-            'memory_peak' => memory_get_peak_usage()
-        ];
+        $payload['server'] = $this->buildServerContext();
 
-        // Add breadcrumbs/events for context
         $breadcrumbs = BreadcrumbManager::getBreadcrumbs();
-        if (!empty($breadcrumbs)) {
+        if ($breadcrumbs !== []) {
             $payload['breadcrumbs'] = $breadcrumbs;
         }
 
         return $payload;
     }
 
-    private function generateStackTrace()
+    private function buildRequestContext(Request $request): array
+    {
+        return [
+            'url' => $request->getUri(),
+            'method' => $request->getMethod(),
+            'route' => $request->attributes->get('_route'),
+            'ip' => $request->getClientIp(),
+            'user_agent' => $request->headers->get('User-Agent'),
+            'parameters' => $this->sanitizeParameters($request->request->all()),
+            'query' => $this->sanitizeParameters($request->query->all()),
+            'headers' => $this->sanitizeHeaders($request->headers->all()),
+        ];
+    }
+
+    private function buildServerContext(): array
+    {
+        return [
+            'php_version' => PHP_VERSION,
+            'memory_usage' => memory_get_usage(),
+            'memory_peak' => memory_get_peak_usage(),
+            'server_time' => (new DateTimeImmutable())->format(DateTimeInterface::ATOM),
+        ];
+    }
+
+    private function generateStackTrace(): string
     {
         $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
-        
-        // Remove the first few internal calls
         $trace = array_slice($trace, 3);
-        
-        $stackTrace = '';
-        foreach ($trace as $i => $call) {
-            $file = isset($call['file']) ? $call['file'] : '[internal]';
-            $line = isset($call['line']) ? $call['line'] : 0;
-            $function = isset($call['function']) ? $call['function'] : '';
-            $class = isset($call['class']) ? $call['class'] : '';
-            
-            if ($class) {
-                $function = $class . '::' . $function;
-            }
-            
-            $stackTrace .= "#{$i} {$file}({$line}): {$function}()\n";
-        }
-        
-        return $stackTrace;
+
+        return implode("\n", array_map(
+            static fn(int $i, array $call): string => sprintf(
+                '#%d %s(%d): %s()',
+                $i,
+                $call['file'] ?? '[internal]',
+                $call['line'] ?? 0,
+                isset($call['class']) ? $call['class'] . '::' . ($call['function'] ?? '') : ($call['function'] ?? '')
+            ),
+            array_keys($trace),
+            $trace
+        ));
     }
 
-    private function generateMessageFingerprint($message, $level)
+    private function sanitizeParameters(array $parameters): array
     {
-        $fingerprint = sprintf(
-            'CustomMessage:%s:%s',
-            $level,
-            md5($message)
-        );
-        
-        return md5($fingerprint);
-    }
-
-    private function generateFingerprint(\Throwable $exception)
-    {
-        $fingerprint = sprintf(
-            '%s:%s:%d',
-            get_class($exception),
-            $exception->getFile(),
-            $exception->getLine()
-        );
-
-        return md5($fingerprint);
-    }
-
-    private function sanitizeParameters(array $parameters)
-    {
-        $sensitiveKeys = ['password', 'token', 'secret', 'key', 'api_key', 'authorization'];
-
+        $sanitized = [];
         foreach ($parameters as $key => $value) {
-            foreach ($sensitiveKeys as $sensitiveKey) {
-                if (stripos($key, $sensitiveKey) !== false) {
-                    $parameters[$key] = '[REDACTED]';
-                    break;
+            $sanitized[$key] = $this->isSensitiveKey($key) ? '[REDACTED]' : $value;
+        }
+        return $sanitized;
+    }
+
+    private function sanitizeHeaders(array $headers): array
+    {
+        $sanitized = [];
+        foreach ($headers as $key => $value) {
+            if (in_array(strtolower($key), self::SENSITIVE_HEADERS, true)) {
+                $sanitized[$key] = is_array($value) ? ['[REDACTED]'] : '[REDACTED]';
+            } else {
+                $sanitized[$key] = $value;
+            }
+        }
+        return $sanitized;
+    }
+
+    private function isSensitiveKey(string $key): bool
+    {
+        return array_reduce(
+            self::SENSITIVE_KEYS,
+            static fn(bool $carry, string $sensitiveKey): bool => $carry || str_contains(strtolower($key), $sensitiveKey),
+            false
+        );
+    }
+
+    private function sendWebhook(array $payload): void
+    {
+        $url = rtrim($this->webhookUrl, '/') . '/webhook/error/' . $this->token;
+        $lastException = null;
+
+        for ($attempt = 0; $attempt <= $this->maxRetries; $attempt++) {
+            try {
+                $this->getHttpClient()->request('POST', $url, [
+                    'json' => $payload,
+                    'timeout' => $this->timeout,
+                    'headers' => [
+                        'Content-Type' => 'application/json',
+                        'User-Agent' => 'ErrorExplorer-SDK/2.0-modern',
+                        'X-Attempt' => (string)($attempt + 1),
+                        'X-Max-Attempts' => (string)($this->maxRetries + 1),
+                    ],
+                ]);
+
+                return;
+
+            } catch (Throwable $e) {
+                $lastException = $e;
+
+                if ($attempt < $this->maxRetries) {
+                    usleep(100_000 * ($attempt + 1));
                 }
             }
         }
 
-        return $parameters;
-    }
-
-    private function sanitizeHeaders(array $headers)
-    {
-        $sensitiveHeaders = ['authorization', 'cookie', 'x-api-key', 'x-auth-token'];
-
-        foreach ($headers as $key => $value) {
-            if (in_array(strtolower($key), $sensitiveHeaders)) {
-                $headers[$key] = is_array($value) ? ['[REDACTED]'] : '[REDACTED]';
-            }
-        }
-
-        return $headers;
-    }
-
-    private function sendWebhook(array $payload)
-    {
-        $url = rtrim($this->webhookUrl, '/') . '/webhook/error/' . $this->token;
-
-        $this->httpClient->request('POST', $url, [
-            'json' => $payload,
-            'timeout' => 5,
-            'headers' => [
-                'Content-Type' => 'application/json',
-                'User-Agent' => 'ErrorExplorer-SDK/1.0'
-            ]
-        ]);
+        throw $lastException ?? new \RuntimeException('Webhook failed without exception');
     }
 }

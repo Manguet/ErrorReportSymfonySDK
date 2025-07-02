@@ -18,7 +18,7 @@ class ErrorReporterInitializerTest extends TestCase
         $instanceProperty->setValue(null, null);
     }
 
-    public function testInitializerSetsStaticInstance()
+    public function testInitializerSetsStaticInstance(): void
     {
         $webhookReporter = $this->createMock(WebhookErrorReporter::class);
 
@@ -32,7 +32,7 @@ class ErrorReporterInitializerTest extends TestCase
         $this->assertTrue(ErrorReporter::isConfigured());
     }
 
-    public function testGetWebhookErrorReporter()
+    public function testGetWebhookErrorReporter(): void
     {
         $webhookReporter = $this->createMock(WebhookErrorReporter::class);
 
@@ -41,7 +41,7 @@ class ErrorReporterInitializerTest extends TestCase
         $this->assertSame($webhookReporter, $initializer->getWebhookErrorReporter());
     }
 
-    public function testStaticErrorReporterWorksAfterInitialization()
+    public function testStaticErrorReporterWorksAfterInitialization(): void
     {
         $webhookReporter = $this->createMock(WebhookErrorReporter::class);
         $exception = new \Exception('Test exception');
@@ -52,7 +52,7 @@ class ErrorReporterInitializerTest extends TestCase
             ->with($exception, 'test', 500, null);
 
         // Initialize
-        $initializer = new ErrorReporterInitializer($webhookReporter);
+        new ErrorReporterInitializer($webhookReporter);
 
         // Now static calls should work
         ErrorReporter::reportError($exception, 'test', 500);

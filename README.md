@@ -1,16 +1,18 @@
-# Error Reporter Bundle for Symfony
+# Modern Error Reporter Bundle for Symfony
 
-A Symfony bundle that automatically captures and reports exceptions to your Error Explorer monitoring platform.
+A modern, type-safe Symfony bundle that automatically captures and reports exceptions to your Error Explorer monitoring platform using the latest PHP 8.1+ and Symfony 6.x+ features.
 
 ## Features
 
-- 🚀 **Automatic Exception Capture**: Listens to all unhandled exceptions in your Symfony application
-- 🔧 **Zero Configuration**: Works out of the box with minimal setup
-- 🛡️ **Secure**: Sanitizes sensitive data (passwords, tokens, etc.) before sending
-- ⚡ **Non-blocking**: Asynchronous error reporting doesn't slow down your application
-- 🎯 **Smart Filtering**: Configurable exception filtering to ignore common framework exceptions
-- 📊 **Rich Context**: Captures request data, server info, stack traces, and more
-- 🔄 **Wide Compatibility**: Supports Symfony 4.4+ and PHP 7.2+ for maximum compatibility
+- 🚀 **Automatic Exception Capture**: Listens to all unhandled exceptions with PHP 8 attributes
+- 🔧 **Zero Configuration**: Works out of the box with intelligent defaults
+- 🛡️ **Secure**: Sanitizes sensitive data automatically with modern array functions
+- ⚡ **Non-blocking**: Asynchronous error reporting with retry logic and backoff
+- 🎯 **Smart Filtering**: Enum-based filtering with log level priorities
+- 📊 **Rich Context**: Captures comprehensive data with readonly value objects
+- 🔄 **Modern Compatibility**: Requires PHP 8.1+ and Symfony 6.4+ for maximum performance
+- 🏷️ **Type Safety**: Full type declarations with union types and readonly classes
+- 📈 **Enhanced Breadcrumbs**: Smart categorization with icons and auto-leveling
 
 ## Installation
 
@@ -92,24 +94,35 @@ Once configured, the bundle automatically captures and reports:
 
 ### Manual Error Reporting
 
-#### Option 1: Static Interface (Recommended)
+#### Option 1: Modern Static Interface (Recommended)
 
-The easiest way to report errors manually:
+The easiest way to report errors with modern PHP 8.1+ features:
 
 ```php
 use ErrorExplorer\ErrorReporter\ErrorReporter;
+use ErrorExplorer\ErrorReporter\Enum\LogLevel;
 
 class YourController
 {
-    public function someAction()
+    public function someAction(): Response
     {
         try {
             // Your code here
-        } catch (\Exception $e) {
-            // Simple static call
+        } catch (Throwable $e) {
+            // Modern static call with type safety
             ErrorReporter::reportError($e, 'prod', 500);
             throw $e; // Re-throw if needed
         }
+    }
+    
+    public function reportCustomMessage(): void
+    {
+        // Report custom messages with enum levels
+        ErrorReporter::reportMessage(
+            message: 'Payment processing failed',
+            level: LogLevel::CRITICAL,
+            context: ['user_id' => 123, 'amount' => 99.99]
+        );
     }
 }
 ```
@@ -199,26 +212,38 @@ Add breadcrumbs to track what led to an error. **Best Practice**: Only log criti
 
 ```php
 use ErrorExplorer\ErrorReporter\ErrorReporter;
+use ErrorExplorer\ErrorReporter\Enum\{BreadcrumbCategory, LogLevel};
 
-// Add breadcrumbs for critical steps that might fail
-ErrorReporter::addBreadcrumb('User started checkout process', 'user', 'info', ['cart_items' => 3]);
+// Add breadcrumbs with modern enums and named parameters
+ErrorReporter::addBreadcrumb(
+    message: 'User started checkout process',
+    category: BreadcrumbCategory::USER_ACTION,
+    level: LogLevel::INFO,
+    data: ['cart_items' => 3]
+);
 
-// Log navigation to track user path to error
+// Log navigation with type safety
 ErrorReporter::logNavigation('/cart', '/checkout');
 
-// Log critical user actions that might cause issues
+// Log critical user actions
 ErrorReporter::logUserAction('Attempting payment', ['product_id' => 456]);
 
-// Log failed HTTP requests
+// Log HTTP requests with automatic severity detection
 ErrorReporter::logHttpRequest('POST', '/api/payment', 500, ['error' => 'timeout']);
 
-// Log slow/problematic database queries
-ErrorReporter::logQuery('SELECT * FROM users WHERE id = ?', 2500, ['user_id' => 123, 'slow_query' => true]);
+// Log database queries with performance monitoring
+ErrorReporter::logQuery('SELECT * FROM users WHERE id = ?', 2500.0, ['user_id' => 123]);
+
+// New: Log performance metrics
+ErrorReporter::logPerformance('memory_usage', 128.5, 'mb');
+
+// New: Log security events
+ErrorReporter::logSecurity('Failed login attempt', LogLevel::WARNING, ['ip' => '192.168.1.1']);
 
 // When an error occurs, all breadcrumbs provide context
 try {
     // Some operation that might fail
-} catch (\Exception $e) {
+} catch (Throwable $e) {
     ErrorReporter::reportError($e); // Includes all breadcrumbs for context
 }
 ```
@@ -314,31 +339,32 @@ This allows Error Explorer to group similar errors together.
 
 ## Compatibility
 
-### PHP & Symfony Support
+### Modern PHP & Symfony Support
 
 | Component | Minimum Version | Recommended |
 |-----------|----------------|-------------|
-| **PHP** | 7.2+ | 8.1+ |
-| **Symfony** | 4.4+ | 6.0+ |
+| **PHP** | 8.1+ | 8.3+ |
+| **Symfony** | 6.4+ | 7.0+ |
 
-### Supported Symfony Versions
-- ✅ Symfony 4.4 (LTS)
-- ✅ Symfony 5.x
-- ✅ Symfony 6.x  
+### Supported Versions
+- ✅ PHP 8.1+
+- ✅ PHP 8.2+
+- ✅ PHP 8.3+
+- ✅ Symfony 6.4 (LTS)
 - ✅ Symfony 7.x
 
-### Compatibility Matrix
+### Modern Features Used
 
-| PHP Version | Symfony 4.4 | Symfony 5.x | Symfony 6.x | Symfony 7.x |
-|-------------|-------------|-------------|-------------|-------------|
-| **7.2** | ✅ | ✅ | ❌ | ❌ |
-| **7.3** | ✅ | ✅ | ❌ | ❌ |
-| **7.4** | ✅ | ✅ | ❌ | ❌ |
-| **8.0** | ✅ | ✅ | ✅ | ❌ |
-| **8.1** | ✅ | ✅ | ✅ | ✅ |
-| **8.2+** | ✅ | ✅ | ✅ | ✅ |
+| Feature | PHP Version | Usage |
+|---------|-------------|-------|
+| **Enums** | 8.1+ | LogLevel, BreadcrumbCategory |
+| **Readonly Classes** | 8.1+ | Value objects, Services |
+| **Union Types** | 8.0+ | Method parameters |
+| **Attributes** | 8.0+ | Event listeners |
+| **Match Expression** | 8.0+ | Smart conditionals |
+| **Named Arguments** | 8.0+ | Cleaner API calls |
 
-The bundle automatically adapts to your PHP and Symfony version for maximum compatibility.
+The bundle leverages modern PHP features for better performance, type safety, and developer experience.
 
 ## Development vs Production
 

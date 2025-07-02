@@ -4,15 +4,15 @@ namespace ErrorExplorer\ErrorReporter\Tests\Unit\DependencyInjection;
 
 use ErrorExplorer\ErrorReporter\DependencyInjection\Configuration;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\Config\Definition\Processor;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\Security\Core\Exception\AccessDeniedException;
 
 class ConfigurationTest extends TestCase
 {
-    /** @var Configuration */
-    private $configuration;
-
-    /** @var Processor */
-    private $processor;
+    private Configuration $configuration;
+    private Processor $processor;
 
     protected function setUp(): void
     {
@@ -20,7 +20,7 @@ class ConfigurationTest extends TestCase
         $this->processor = new Processor();
     }
 
-    public function testDefaultConfiguration()
+    public function testDefaultConfiguration(): void
     {
         $config = $this->processor->processConfiguration(
             $this->configuration,
@@ -38,12 +38,12 @@ class ConfigurationTest extends TestCase
         $this->assertEquals('test-project', $config['project_name']);
         $this->assertTrue($config['enabled']); // Default should be true
         $this->assertEquals([
-            'Symfony\\Component\\Security\\Core\\Exception\\AccessDeniedException',
-            'Symfony\\Component\\HttpKernel\\Exception\\NotFoundHttpException'
+            AccessDeniedException::class,
+            NotFoundHttpException::class,
         ], $config['ignore_exceptions']);
     }
 
-    public function testCustomConfiguration()
+    public function testCustomConfiguration(): void
     {
         $config = $this->processor->processConfiguration(
             $this->configuration,
@@ -71,9 +71,9 @@ class ConfigurationTest extends TestCase
         ], $config['ignore_exceptions']);
     }
 
-    public function testMissingWebhookUrl()
+    public function testMissingWebhookUrl(): void
     {
-        $this->expectException(\Symfony\Component\Config\Definition\Exception\InvalidConfigurationException::class);
+        $this->expectException(InvalidConfigurationException::class);
         $this->expectExceptionMessage('The child config "webhook_url" under "error_reporter" must be configured');
 
         $this->processor->processConfiguration(
@@ -87,9 +87,9 @@ class ConfigurationTest extends TestCase
         );
     }
 
-    public function testMissingToken()
+    public function testMissingToken(): void
     {
-        $this->expectException(\Symfony\Component\Config\Definition\Exception\InvalidConfigurationException::class);
+        $this->expectException(InvalidConfigurationException::class);
         $this->expectExceptionMessage('The child config "token" under "error_reporter" must be configured');
 
         $this->processor->processConfiguration(
@@ -103,9 +103,9 @@ class ConfigurationTest extends TestCase
         );
     }
 
-    public function testMissingProjectName()
+    public function testMissingProjectName(): void
     {
-        $this->expectException(\Symfony\Component\Config\Definition\Exception\InvalidConfigurationException::class);
+        $this->expectException(InvalidConfigurationException::class);
         $this->expectExceptionMessage('The child config "project_name" under "error_reporter" must be configured');
 
         $this->processor->processConfiguration(
@@ -119,9 +119,9 @@ class ConfigurationTest extends TestCase
         );
     }
 
-    public function testEmptyWebhookUrl()
+    public function testEmptyWebhookUrl(): void
     {
-        $this->expectException(\Symfony\Component\Config\Definition\Exception\InvalidConfigurationException::class);
+        $this->expectException(InvalidConfigurationException::class);
 
         $this->processor->processConfiguration(
             $this->configuration,
@@ -135,9 +135,9 @@ class ConfigurationTest extends TestCase
         );
     }
 
-    public function testEmptyToken()
+    public function testEmptyToken(): void
     {
-        $this->expectException(\Symfony\Component\Config\Definition\Exception\InvalidConfigurationException::class);
+        $this->expectException(InvalidConfigurationException::class);
 
         $this->processor->processConfiguration(
             $this->configuration,
@@ -151,9 +151,9 @@ class ConfigurationTest extends TestCase
         );
     }
 
-    public function testEmptyProjectName()
+    public function testEmptyProjectName(): void
     {
-        $this->expectException(\Symfony\Component\Config\Definition\Exception\InvalidConfigurationException::class);
+        $this->expectException(InvalidConfigurationException::class);
 
         $this->processor->processConfiguration(
             $this->configuration,
@@ -167,7 +167,7 @@ class ConfigurationTest extends TestCase
         );
     }
 
-    public function testIgnoreExceptionsArray()
+    public function testIgnoreExceptionsArray(): void
     {
         $config = $this->processor->processConfiguration(
             $this->configuration,
@@ -192,7 +192,7 @@ class ConfigurationTest extends TestCase
         ], $config['ignore_exceptions']);
     }
 
-    public function testEmptyIgnoreExceptionsArray()
+    public function testEmptyIgnoreExceptionsArray(): void
     {
         $config = $this->processor->processConfiguration(
             $this->configuration,
