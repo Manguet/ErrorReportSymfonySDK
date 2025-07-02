@@ -8,14 +8,14 @@ use ErrorExplorer\ErrorReporter\Service\ErrorReporterInitializer;
 use ErrorExplorer\ErrorReporter\EventListener\ErrorReportingListener;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\Security\Core\Exception\AccessDeniedException;
 
 class ErrorReporterExtensionTest extends TestCase
 {
-    /** @var ErrorReporterExtension */
-    private $extension;
-
-    /** @var ContainerBuilder */
-    private $container;
+    private ErrorReporterExtension $extension;
+    private ContainerBuilder $container;
 
     protected function setUp(): void
     {
@@ -23,7 +23,7 @@ class ErrorReporterExtensionTest extends TestCase
         $this->container = new ContainerBuilder();
     }
 
-    public function testLoad()
+    public function testLoad(): void
     {
         $config = [
             'error_reporter' => [
@@ -43,7 +43,7 @@ class ErrorReporterExtensionTest extends TestCase
         $this->assertTrue($this->container->hasDefinition('error_reporter.initializer'));
     }
 
-    public function testWebhookErrorReporterConfiguration()
+    public function testWebhookErrorReporterConfiguration(): void
     {
         $config = [
             'error_reporter' => [
@@ -65,17 +65,17 @@ class ErrorReporterExtensionTest extends TestCase
         $this->assertEquals(WebhookErrorReporter::class, $definition->getClass());
 
         $arguments = $definition->getArguments();
-        $this->assertEquals('https://test.example.com', $arguments[0]);
-        $this->assertEquals('secret-token', $arguments[1]);
-        $this->assertEquals('my-project', $arguments[2]);
-        $this->assertFalse($arguments[3]); // enabled
+        $this->assertEquals('https://test.example.com', $arguments['$webhookUrl']);
+        $this->assertEquals('secret-token', $arguments['$token']);
+        $this->assertEquals('my-project', $arguments['$projectName']);
+        $this->assertFalse($arguments['$enabled']); // enabled
         $this->assertEquals([
             'App\\Exception\\IgnoredException',
             'Another\\Exception\\Class'
-        ], $arguments[4]); // ignore_exceptions
+        ], $arguments['$ignoredExceptions']); // ignore_exceptions
     }
 
-    public function testErrorReportingListenerConfiguration()
+    public function testErrorReportingListenerConfiguration(): void
     {
         $config = [
             'error_reporter' => [
@@ -90,23 +90,23 @@ class ErrorReporterExtensionTest extends TestCase
         $definition = $this->container->getDefinition('error_reporter.error_reporting_listener');
 
         $this->assertEquals(ErrorReportingListener::class, $definition->getClass());
-        $this->assertTrue($definition->hasTag('kernel.event_subscriber'));
+        $this->assertTrue($definition->hasTag('kernel.event_listener'));
 
         $arguments = $definition->getArguments();
         $this->assertCount(2, $arguments);
 
         // First argument should be a reference to the webhook error reporter
         $this->assertInstanceOf(
-            \Symfony\Component\DependencyInjection\Reference::class,
-            $arguments[0]
+            Reference::class,
+            $arguments['$errorReporter']
         );
-        $this->assertEquals('error_reporter.webhook_error_reporter', (string) $arguments[0]);
+        $this->assertEquals('error_reporter.webhook_error_reporter', (string) $arguments['$errorReporter']);
 
         // Second argument should be the kernel environment parameter
-        $this->assertEquals('%kernel.environment%', $arguments[1]);
+        $this->assertEquals('%kernel.environment%', $arguments['$environment']);
     }
 
-    public function testErrorReporterInitializerConfiguration()
+    public function testErrorReporterInitializerConfiguration(): void
     {
         $config = [
             'error_reporter' => [
@@ -127,18 +127,18 @@ class ErrorReporterExtensionTest extends TestCase
 
         // Argument should be a reference to the webhook error reporter
         $this->assertInstanceOf(
-            \Symfony\Component\DependencyInjection\Reference::class,
-            $arguments[0]
+            Reference::class,
+            $arguments['$errorReporter']
         );
-        $this->assertEquals('error_reporter.webhook_error_reporter', (string) $arguments[0]);
+        $this->assertEquals('error_reporter.webhook_error_reporter', (string) $arguments['$errorReporter']);
     }
 
-    public function testGetAlias()
+    public function testGetAlias(): void
     {
         $this->assertEquals('error_reporter', $this->extension->getAlias());
     }
 
-    public function testServiceReferences()
+    public function testServiceReferences(): void
     {
         $config = [
             'error_reporter' => [
@@ -155,25 +155,25 @@ class ErrorReporterExtensionTest extends TestCase
 
         // Check optional service references
         $this->assertInstanceOf(
-            \Symfony\Component\DependencyInjection\Reference::class,
-            $arguments[5]
+            Reference::class,
+            $arguments['$httpClient']
         ); // http_client
-        $this->assertEquals('http_client', (string) $arguments[5]);
+        $this->assertEquals('http_client', (string) $arguments['$httpClient']);
 
         $this->assertInstanceOf(
-            \Symfony\Component\DependencyInjection\Reference::class,
-            $arguments[6]
+            Reference::class,
+            $arguments['$logger']
         ); // logger
-        $this->assertEquals('logger', (string) $arguments[6]);
+        $this->assertEquals('logger', (string) $arguments['$logger']);
 
         $this->assertInstanceOf(
-            \Symfony\Component\DependencyInjection\Reference::class,
-            $arguments[7]
+            Reference::class,
+            $arguments['$requestStack']
         ); // request_stack
-        $this->assertEquals('request_stack', (string) $arguments[7]);
+        $this->assertEquals('request_stack', (string) $arguments['$requestStack']);
     }
 
-    public function testMinimalConfiguration()
+    public function testMinimalConfiguration(): void
     {
         $config = [
             'error_reporter' => [
@@ -188,13 +188,13 @@ class ErrorReporterExtensionTest extends TestCase
         $definition = $this->container->getDefinition('error_reporter.webhook_error_reporter');
         $arguments = $definition->getArguments();
 
-        $this->assertEquals('https://minimal.com', $arguments[0]);
-        $this->assertEquals('minimal-token', $arguments[1]);
-        $this->assertEquals('minimal-project', $arguments[2]);
-        $this->assertTrue($arguments[3]); // enabled defaults to true
+        $this->assertEquals('https://minimal.com', $arguments['$webhookUrl']);
+        $this->assertEquals('minimal-token', $arguments['$token']);
+        $this->assertEquals('minimal-project', $arguments['$projectName']);
+        $this->assertTrue($arguments['$enabled']); // enabled defaults to true
         $this->assertEquals([
-            'Symfony\\Component\\Security\\Core\\Exception\\AccessDeniedException',
-            'Symfony\\Component\\HttpKernel\\Exception\\NotFoundHttpException'
-        ], $arguments[4]); // default ignore_exceptions
+            AccessDeniedException::class,
+            NotFoundHttpException::class
+        ], $arguments['$ignoredExceptions']); // default ignore_exceptions
     }
 }

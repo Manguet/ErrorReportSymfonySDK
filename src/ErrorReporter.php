@@ -1,44 +1,32 @@
 <?php
 
+declare(strict_types=1);
+
 namespace ErrorExplorer\ErrorReporter;
 
-use ErrorExplorer\ErrorReporter\Service\WebhookErrorReporter;
+use ErrorExplorer\ErrorReporter\Enum\BreadcrumbCategory;
+use ErrorExplorer\ErrorReporter\Enum\LogLevel;
 use ErrorExplorer\ErrorReporter\Service\BreadcrumbManager;
+use ErrorExplorer\ErrorReporter\Service\WebhookErrorReporter;
 use Symfony\Component\HttpFoundation\Request;
+use Throwable;
 
-/**
- * Static facade for easy error reporting
- * 
- * Usage:
- * ErrorReporter::reportError($exception);
- * ErrorReporter::reportError($exception, 'prod', 500);
- */
-class ErrorReporter
+final class ErrorReporter
 {
-    /** @var WebhookErrorReporter|null */
-    private static $instance;
+    private static ?WebhookErrorReporter $instance = null;
 
-    /**
-     * Set the service instance (called by DI container)
-     */
-    public static function setInstance(WebhookErrorReporter $instance)
+    public static function setInstance(WebhookErrorReporter $instance): void
     {
         self::$instance = $instance;
     }
 
-    /**
-     * Report an error using the static interface
-     *
-     * @param \Throwable $exception
-     * @param string $environment
-     * @param int|null $httpStatus
-     * @param Request|null $request
-     */
-    public static function reportError(\Throwable $exception, $environment = 'prod', $httpStatus = null, Request $request = null)
-    {
+    public static function reportError(
+        Throwable $exception,
+        string $environment = 'prod',
+        ?int $httpStatus = null,
+        ?Request $request = null
+    ): void {
         if (self::$instance === null) {
-            // Fallback: try to create a basic instance if not initialized
-            // This shouldn't happen in a properly configured Symfony app
             error_log('ErrorReporter: Service not initialized. Make sure the bundle is properly configured.');
             return;
         }
@@ -46,35 +34,32 @@ class ErrorReporter
         self::$instance->reportError($exception, $environment, $httpStatus, $request);
     }
 
-    /**
-     * Check if the error reporter is enabled and configured
-     */
-    public static function isConfigured()
+    public static function isConfigured(): bool
     {
         return self::$instance !== null;
     }
 
-    /**
-     * Quick helper to report an exception with minimal parameters
-     */
-    public static function report(\Throwable $exception)
+    public static function report(Throwable $exception): void
     {
         self::reportError($exception);
     }
 
-    /**
-     * Report an error with custom context
-     */
-    public static function reportWithContext(\Throwable $exception, $environment = 'prod', $httpStatus = null)
-    {
+    public static function reportWithContext(
+        Throwable $exception,
+        string $environment = 'prod',
+        ?int $httpStatus = null
+    ): void {
         self::reportError($exception, $environment, $httpStatus);
     }
 
-    /**
-     * Report a custom message (not an exception)
-     */
-    public static function reportMessage($message, $environment = 'prod', $httpStatus = null, Request $request = null, $level = 'error', array $context = [])
-    {
+    public static function reportMessage(
+        string $message,
+        string $environment = 'prod',
+        ?int $httpStatus = null,
+        ?Request $request = null,
+        LogLevel|string $level = LogLevel::ERROR,
+        array $context = []
+    ): void {
         if (self::$instance === null) {
             error_log('ErrorReporter: Service not initialized. Make sure the bundle is properly configured.');
             return;
@@ -83,51 +68,102 @@ class ErrorReporter
         self::$instance->reportMessage($message, $environment, $httpStatus, $request, $level, $context);
     }
 
-    /**
-     * Add a breadcrumb/event to track user journey
-     */
-    public static function addBreadcrumb($message, $category = 'custom', $level = 'info', array $data = [])
-    {
+    public static function addBreadcrumb(
+        string $message,
+        BreadcrumbCategory|string $category = BreadcrumbCategory::CUSTOM,
+        LogLevel|string $level = LogLevel::INFO,
+        array $data = []
+    ): void {
         BreadcrumbManager::addBreadcrumb($message, $category, $level, $data);
     }
 
-    /**
-     * Log a navigation event
-     */
-    public static function logNavigation($from, $to, array $data = [])
+    public static function logNavigation(string $from, string $to, array $data = []): void
     {
         BreadcrumbManager::logNavigation($from, $to, $data);
     }
 
-    /**
-     * Log a user action
-     */
-    public static function logUserAction($action, array $data = [])
+    public static function logUserAction(string $action, array $data = []): void
     {
         BreadcrumbManager::logUserAction($action, $data);
     }
 
-    /**
-     * Log an HTTP request
-     */
-    public static function logHttpRequest($method, $url, $statusCode = null, array $data = [])
-    {
+    public static function logHttpRequest(
+        string $method,
+        string $url,
+        ?int $statusCode = null,
+        array $data = []
+    ): void {
         BreadcrumbManager::logHttpRequest($method, $url, $statusCode, $data);
     }
 
-    /**
-     * Log a database query
-     */
-    public static function logQuery($query, $duration = null, array $data = [])
+    public static function logQuery(string $query, ?float $duration = null, array $data = []): void
     {
         BreadcrumbManager::logQuery($query, $duration, $data);
     }
 
-    /**
-     * Clear all breadcrumbs
-     */
-    public static function clearBreadcrumbs()
+    public static function logPerformance(string $metric, float $value, string $unit = 'ms'): void
+    {
+        BreadcrumbManager::logPerformance($metric, $value, $unit);
+    }
+
+    public static function logSecurity(string $event, LogLevel $level = LogLevel::WARNING, array $data = []): void
+    {
+        BreadcrumbManager::logSecurity($event, $level, $data);
+    }
+
+    public static function clearBreadcrumbs(): void
     {
         BreadcrumbManager::clearBreadcrumbs();
+    }
+
+    public static function setMaxBreadcrumbs(int $max): void
+    {
+        BreadcrumbManager::setMaxBreadcrumbs($max);
+    }
+
+    public static function getMaxBreadcrumbs(): int
+    {
+        return BreadcrumbManager::getMaxBreadcrumbs();
+    }
+
+    public static function getBreadcrumbCount(): int
+    {
+        return BreadcrumbManager::getBreadcrumbCount();
+    }
+
+    public static function getBreadcrumbs(): array
+    {
+        return BreadcrumbManager::getBreadcrumbs();
+    }
+
+    // Convenience methods for different error levels
+    public static function reportDebug(string $message, array $context = []): void
+    {
+        self::reportMessage($message, level: LogLevel::DEBUG, context: $context);
+    }
+
+    public static function reportInfo(string $message, array $context = []): void
+    {
+        self::reportMessage($message, level: LogLevel::INFO, context: $context);
+    }
+
+    public static function reportWarning(string $message, array $context = []): void
+    {
+        self::reportMessage($message, level: LogLevel::WARNING, context: $context);
+    }
+
+    public static function reportCritical(string $message, array $context = []): void
+    {
+        self::reportMessage($message, level: LogLevel::CRITICAL, context: $context);
+    }
+
+    public static function reportAlert(string $message, array $context = []): void
+    {
+        self::reportMessage($message, level: LogLevel::ALERT, context: $context);
+    }
+
+    public static function reportEmergency(string $message, array $context = []): void
+    {
+        self::reportMessage($message, level: LogLevel::EMERGENCY, context: $context);
     }
 }

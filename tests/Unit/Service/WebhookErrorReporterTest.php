@@ -1,29 +1,28 @@
 <?php
 
+declare(strict_types=1);
+
 namespace ErrorExplorer\ErrorReporter\Tests\Unit\Service;
 
-use ErrorExplorer\ErrorReporter\Service\WebhookErrorReporter;
+use ErrorExplorer\ErrorReporter\Enum\LogLevel;
 use ErrorExplorer\ErrorReporter\Service\BreadcrumbManager;
+use ErrorExplorer\ErrorReporter\Service\WebhookErrorReporter;
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
-use Psr\Log\LoggerInterface;
+use Throwable;
 
-class WebhookErrorReporterTest extends TestCase
+#[CoversClass(WebhookErrorReporter::class)]
+final class WebhookErrorReporterTest extends TestCase
 {
-    /** @var HttpClientInterface */
-    private $httpClient;
-
-    /** @var LoggerInterface */
-    private $logger;
-
-    /** @var RequestStack */
-    private $requestStack;
-
-    /** @var WebhookErrorReporter */
-    private $reporter;
+    private HttpClientInterface $httpClient;
+    private LoggerInterface $logger;
+    private RequestStack $requestStack;
+    private WebhookErrorReporter $reporter;
 
     protected function setUp(): void
     {
@@ -32,21 +31,24 @@ class WebhookErrorReporterTest extends TestCase
         $this->requestStack = $this->createMock(RequestStack::class);
 
         $this->reporter = new WebhookErrorReporter(
-            'https://example.com',
-            'test-token',
-            'test-project',
-            true,
-            [],
-            $this->httpClient,
-            $this->logger,
-            $this->requestStack
+            webhookUrl: 'https://example.com',
+            token: 'test-token',
+            projectName: 'test-project',
+            enabled: true,
+            ignoredExceptions: [],
+            timeout: 5,
+            maxRetries: 0,
+            minimumLevel: LogLevel::ERROR,
+            httpClient: $this->httpClient,
+            logger: $this->logger,
+            requestStack: $this->requestStack
         );
 
         // Clear breadcrumbs before each test
         BreadcrumbManager::clearBreadcrumbs();
     }
 
-    public function testReportErrorWithException()
+    public function testReportErrorWithException(): void
     {
         $exception = new \Exception('Test error', 500);
         $response = $this->createMock(ResponseInterface::class);
@@ -74,17 +76,20 @@ class WebhookErrorReporterTest extends TestCase
         $this->reporter->reportError($exception);
     }
 
-    public function testReportErrorWithIgnoredException()
+    public function testReportErrorWithIgnoredException(): void
     {
         $reporter = new WebhookErrorReporter(
-            'https://example.com',
-            'test-token',
-            'test-project',
-            true,
-            ['Exception'],
-            $this->httpClient,
-            $this->logger,
-            $this->requestStack
+            webhookUrl: 'https://example.com',
+            token: 'test-token',
+            projectName: 'test-project',
+            enabled: true,
+            ignoredExceptions: ['Exception'],
+            timeout: 5,
+            maxRetries: 0,
+            minimumLevel: LogLevel::ERROR,
+            httpClient: $this->httpClient,
+            logger: $this->logger,
+            requestStack: $this->requestStack
         );
 
         $exception = new \Exception('Ignored error');
@@ -95,17 +100,20 @@ class WebhookErrorReporterTest extends TestCase
         $reporter->reportError($exception);
     }
 
-    public function testReportErrorWhenDisabled()
+    public function testReportErrorWhenDisabled(): void
     {
         $reporter = new WebhookErrorReporter(
-            'https://example.com',
-            'test-token',
-            'test-project',
-            false, // disabled
-            [],
-            $this->httpClient,
-            $this->logger,
-            $this->requestStack
+            webhookUrl: 'https://example.com',
+            token: 'test-token',
+            projectName: 'test-project',
+            enabled: false, // disabled
+            ignoredExceptions: [],
+            timeout: 5,
+            maxRetries: 0,
+            minimumLevel: LogLevel::ERROR,
+            httpClient: $this->httpClient,
+            logger: $this->logger,
+            requestStack: $this->requestStack
         );
 
         $exception = new \Exception('Test error');
@@ -116,7 +124,7 @@ class WebhookErrorReporterTest extends TestCase
         $reporter->reportError($exception);
     }
 
-    public function testReportErrorWithRequest()
+    public function testReportErrorWithRequest(): void
     {
         $request = Request::create('https://example.com/test', 'POST', ['param' => 'value']);
         $request->headers->set('User-Agent', 'Test Agent');
@@ -145,9 +153,9 @@ class WebhookErrorReporterTest extends TestCase
         $this->reporter->reportError($exception, 'prod', 500, $request);
     }
 
-    public function testReportErrorWithBreadcrumbs()
+    public function testReportErrorWithBreadcrumbs(): void
     {
-        BreadcrumbManager::addBreadcrumb('Test breadcrumb', 'test', 'info');
+        BreadcrumbManager::addBreadcrumb('Test breadcrumb');
         BreadcrumbManager::logUserAction('Test action');
 
         $exception = new \Exception('Test error');
@@ -174,7 +182,7 @@ class WebhookErrorReporterTest extends TestCase
         $this->reporter->reportError($exception);
     }
 
-    public function testReportMessage()
+    public function testReportMessage(): void
     {
         $response = $this->createMock(ResponseInterface::class);
 
@@ -198,20 +206,23 @@ class WebhookErrorReporterTest extends TestCase
             )
             ->willReturn($response);
 
-        $this->reporter->reportMessage('Custom error message', 'prod', 500, null, 'error', ['key' => 'value']);
+        $this->reporter->reportMessage('Custom error message', 'prod', 500, null, LogLevel::ERROR, ['key' => 'value']);
     }
 
-    public function testReportMessageWhenDisabled()
+    public function testReportMessageWhenDisabled(): void
     {
         $reporter = new WebhookErrorReporter(
-            'https://example.com',
-            'test-token',
-            'test-project',
-            false, // disabled
-            [],
-            $this->httpClient,
-            $this->logger,
-            $this->requestStack
+            webhookUrl: 'https://example.com',
+            token: 'test-token',
+            projectName: 'test-project',
+            enabled: false, // disabled
+            ignoredExceptions: [],
+            timeout: 5,
+            maxRetries: 0,
+            minimumLevel: LogLevel::ERROR,
+            httpClient: $this->httpClient,
+            logger: $this->logger,
+            requestStack: $this->requestStack
         );
 
         $this->httpClient->expects($this->never())
@@ -220,7 +231,7 @@ class WebhookErrorReporterTest extends TestCase
         $reporter->reportMessage('Custom error message');
     }
 
-    public function testHttpClientException()
+    public function testHttpClientException(): void
     {
         $exception = new \Exception('Test error');
         $httpException = new \Exception('HTTP error');
@@ -235,14 +246,15 @@ class WebhookErrorReporterTest extends TestCase
                 'Failed to report error to Error Explorer',
                 [
                     'exception' => 'HTTP error',
-                    'original_error' => 'Test error'
+                    'original_error' => 'Test error',
+                    'exception_class' => 'Exception'
                 ]
             );
 
         $this->reporter->reportError($exception);
     }
 
-    public function testHttpClientExceptionWithMessage()
+    public function testHttpClientExceptionWithMessage(): void
     {
         $httpException = new \Exception('HTTP error');
 
@@ -263,7 +275,7 @@ class WebhookErrorReporterTest extends TestCase
         $this->reporter->reportMessage('Custom message');
     }
 
-    public function testSanitizeParameters()
+    public function testSanitizeParameters(): void
     {
         $request = Request::create('https://example.com/test', 'POST', [
             'username' => 'testuser',
@@ -297,7 +309,7 @@ class WebhookErrorReporterTest extends TestCase
         $this->reporter->reportError($exception, 'prod', 500, $request);
     }
 
-    public function testSanitizeHeaders()
+    public function testSanitizeHeaders(): void
     {
         $request = Request::create('https://example.com/test');
         $request->headers->set('Authorization', 'Bearer secret-token');

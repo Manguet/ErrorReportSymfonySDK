@@ -1,17 +1,23 @@
 <?php
 
+declare(strict_types=1);
+
 namespace ErrorExplorer\ErrorReporter\Tests\Unit;
 
+use ErrorExplorer\ErrorReporter\Enum\BreadcrumbCategory;
+use ErrorExplorer\ErrorReporter\Enum\LogLevel;
 use ErrorExplorer\ErrorReporter\ErrorReporter;
-use ErrorExplorer\ErrorReporter\Service\WebhookErrorReporter;
 use ErrorExplorer\ErrorReporter\Service\BreadcrumbManager;
+use ErrorExplorer\ErrorReporter\Service\WebhookErrorReporter;
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
+use Throwable;
 
-class ErrorReporterTest extends TestCase
+#[CoversClass(ErrorReporter::class)]
+final class ErrorReporterTest extends TestCase
 {
-    /** @var WebhookErrorReporter */
-    private $webhookReporter;
+    private WebhookErrorReporter $webhookReporter;
 
     protected function setUp(): void
     {
@@ -26,16 +32,17 @@ class ErrorReporterTest extends TestCase
 
     protected function tearDown(): void
     {
-        // Reset static state
+        // Reset static state using modern reflection
         $reflection = new \ReflectionClass(ErrorReporter::class);
         $instanceProperty = $reflection->getProperty('instance');
-        $instanceProperty->setAccessible(true);
         $instanceProperty->setValue(null, null);
 
         BreadcrumbManager::clearBreadcrumbs();
+        
+        parent::tearDown();
     }
 
-    public function testSetInstance()
+    public function testSetInstance(): void
     {
         $reporter = $this->createMock(WebhookErrorReporter::class);
         ErrorReporter::setInstance($reporter);
@@ -43,18 +50,17 @@ class ErrorReporterTest extends TestCase
         $this->assertTrue(ErrorReporter::isConfigured());
     }
 
-    public function testIsConfiguredWhenNotSet()
+    public function testIsConfiguredWhenNotSet(): void
     {
-        // Reset instance
+        // Reset instance using modern reflection
         $reflection = new \ReflectionClass(ErrorReporter::class);
         $instanceProperty = $reflection->getProperty('instance');
-        $instanceProperty->setAccessible(true);
         $instanceProperty->setValue(null, null);
 
         $this->assertFalse(ErrorReporter::isConfigured());
     }
 
-    public function testReportError()
+    public function testReportError(): void
     {
         $exception = new \Exception('Test error');
         $request = Request::create('/test');
@@ -66,7 +72,7 @@ class ErrorReporterTest extends TestCase
         ErrorReporter::reportError($exception, 'staging', 404, $request);
     }
 
-    public function testReportErrorWithDefaults()
+    public function testReportErrorWithDefaults(): void
     {
         $exception = new \Exception('Test error');
 
@@ -77,7 +83,7 @@ class ErrorReporterTest extends TestCase
         ErrorReporter::reportError($exception);
     }
 
-    public function testReportErrorWhenNotConfigured()
+    public function testReportErrorWhenNotConfigured(): void
     {
         // Reset instance
         $reflection = new \ReflectionClass(ErrorReporter::class);
@@ -92,7 +98,7 @@ class ErrorReporterTest extends TestCase
         ErrorReporter::reportError($exception);
     }
 
-    public function testReport()
+    public function testReport(): void
     {
         $exception = new \Exception('Test error');
 
@@ -103,7 +109,7 @@ class ErrorReporterTest extends TestCase
         ErrorReporter::report($exception);
     }
 
-    public function testReportWithContext()
+    public function testReportWithContext(): void
     {
         $exception = new \Exception('Test error');
 
@@ -114,27 +120,27 @@ class ErrorReporterTest extends TestCase
         ErrorReporter::reportWithContext($exception, 'staging', 500);
     }
 
-    public function testReportMessage()
+    public function testReportMessage(): void
     {
         $request = Request::create('/test');
 
         $this->webhookReporter->expects($this->once())
             ->method('reportMessage')
-            ->with('Custom message', 'staging', 400, $request, 'warning', ['key' => 'value']);
+            ->with('Custom message', 'staging', 400, $request, LogLevel::WARNING, ['key' => 'value']);
 
-        ErrorReporter::reportMessage('Custom message', 'staging', 400, $request, 'warning', ['key' => 'value']);
+        ErrorReporter::reportMessage('Custom message', 'staging', 400, $request, LogLevel::WARNING, ['key' => 'value']);
     }
 
-    public function testReportMessageWithDefaults()
+    public function testReportMessageWithDefaults(): void
     {
         $this->webhookReporter->expects($this->once())
             ->method('reportMessage')
-            ->with('Custom message', 'prod', null, null, 'error', []);
+            ->with('Custom message', 'prod', null, null, LogLevel::ERROR, []);
 
         ErrorReporter::reportMessage('Custom message');
     }
 
-    public function testReportMessageWhenNotConfigured()
+    public function testReportMessageWhenNotConfigured(): void
     {
         // Reset instance
         $reflection = new \ReflectionClass(ErrorReporter::class);
@@ -147,32 +153,32 @@ class ErrorReporterTest extends TestCase
         ErrorReporter::reportMessage('Custom message');
     }
 
-    public function testAddBreadcrumb()
+    public function testAddBreadcrumb(): void
     {
-        ErrorReporter::addBreadcrumb('Test message', 'test', 'info', ['key' => 'value']);
+        ErrorReporter::addBreadcrumb('Test message', BreadcrumbCategory::CUSTOM, LogLevel::INFO, ['key' => 'value']);
 
         $breadcrumbs = BreadcrumbManager::getBreadcrumbs();
 
         $this->assertCount(1, $breadcrumbs);
         $this->assertEquals('Test message', $breadcrumbs[0]['message']);
-        $this->assertEquals('test', $breadcrumbs[0]['category']);
+        $this->assertEquals('custom', $breadcrumbs[0]['category']);
         $this->assertEquals('info', $breadcrumbs[0]['level']);
         $this->assertEquals(['key' => 'value'], $breadcrumbs[0]['data']);
     }
 
-    public function testLogNavigation()
+    public function testLogNavigation(): void
     {
         ErrorReporter::logNavigation('/home', '/profile', ['user_id' => 123]);
 
         $breadcrumbs = BreadcrumbManager::getBreadcrumbs();
 
         $this->assertCount(1, $breadcrumbs);
-        $this->assertEquals('Navigation: /home -> /profile', $breadcrumbs[0]['message']);
+        $this->assertEquals('Navigation: /home → /profile', $breadcrumbs[0]['message']);
         $this->assertEquals('navigation', $breadcrumbs[0]['category']);
-        $this->assertEquals(['user_id' => 123], $breadcrumbs[0]['data']);
+        $this->assertEquals(['user_id' => 123, 'from' => '/home', 'to' => '/profile'], $breadcrumbs[0]['data']);
     }
 
-    public function testLogUserAction()
+    public function testLogUserAction(): void
     {
         ErrorReporter::logUserAction('clicked_button', ['button_id' => 'submit']);
 
@@ -181,10 +187,10 @@ class ErrorReporterTest extends TestCase
         $this->assertCount(1, $breadcrumbs);
         $this->assertEquals('User action: clicked_button', $breadcrumbs[0]['message']);
         $this->assertEquals('user', $breadcrumbs[0]['category']);
-        $this->assertEquals(['button_id' => 'submit'], $breadcrumbs[0]['data']);
+        $this->assertEquals(['button_id' => 'submit', 'action' => 'clicked_button'], $breadcrumbs[0]['data']);
     }
 
-    public function testLogHttpRequest()
+    public function testLogHttpRequest(): void
     {
         ErrorReporter::logHttpRequest('POST', '/api/users', 201, ['user_id' => 456]);
 
@@ -193,10 +199,10 @@ class ErrorReporterTest extends TestCase
         $this->assertCount(1, $breadcrumbs);
         $this->assertEquals('HTTP POST /api/users [201]', $breadcrumbs[0]['message']);
         $this->assertEquals('http', $breadcrumbs[0]['category']);
-        $this->assertEquals(['user_id' => 456], $breadcrumbs[0]['data']);
+        $this->assertEquals(['user_id' => 456, 'method' => 'POST', 'url' => '/api/users', 'status_code' => 201], $breadcrumbs[0]['data']);
     }
 
-    public function testLogQuery()
+    public function testLogQuery(): void
     {
         ErrorReporter::logQuery('SELECT * FROM users', 25.5, ['query_id' => 'q123']);
 
@@ -204,11 +210,11 @@ class ErrorReporterTest extends TestCase
 
         $this->assertCount(1, $breadcrumbs);
         $this->assertEquals('Query: SELECT * FROM users (25.5ms)', $breadcrumbs[0]['message']);
-        $this->assertEquals('database', $breadcrumbs[0]['category']);
-        $this->assertEquals(['query_id' => 'q123'], $breadcrumbs[0]['data']);
+        $this->assertEquals('query', $breadcrumbs[0]['category']);
+        $this->assertEquals(['query_id' => 'q123', 'query' => 'SELECT * FROM users', 'duration_ms' => 25.5], $breadcrumbs[0]['data']);
     }
 
-    public function testClearBreadcrumbs()
+    public function testClearBreadcrumbs(): void
     {
         ErrorReporter::addBreadcrumb('Test message 1');
         ErrorReporter::addBreadcrumb('Test message 2');

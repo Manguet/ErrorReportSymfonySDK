@@ -1,68 +1,51 @@
 <?php
 
+declare(strict_types=1);
+
 namespace ErrorExplorer\ErrorReporter\EventListener;
 
 use ErrorExplorer\ErrorReporter\Service\WebhookErrorReporter;
-use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\ExceptionEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
-use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
-class ErrorReportingListener implements EventSubscriberInterface
+#[AsEventListener(event: KernelEvents::EXCEPTION, method: 'onKernelException', priority: 0)]
+final class ErrorReportingListener
 {
-    /** @var WebhookErrorReporter */
-    private $errorReporter;
-    /** @var string */
-    private $environment;
+    public function __construct(
+        private readonly WebhookErrorReporter $errorReporter,
+        private readonly string $environment,
+    ) {}
 
-    public function __construct(WebhookErrorReporter $errorReporter, $environment)
-    {
-        $this->errorReporter = $errorReporter;
-        $this->environment = $environment;
-    }
-
-    public static function getSubscribedEvents()
-    {
-        return [
-            KernelEvents::EXCEPTION => ['onKernelException', 0],
-        ];
-    }
-
-    public function onKernelException(ExceptionEvent $event)
+    public function onKernelException(ExceptionEvent $event): void
     {
         $exception = $event->getThrowable();
         $request = $event->getRequest();
-        
         $httpStatus = $this->determineHttpStatus($exception);
-        
+
         $this->errorReporter->reportError($exception, $this->environment, $httpStatus, $request);
     }
 
-    private function determineHttpStatus(\Throwable $exception)
+    private function determineHttpStatus(Throwable $exception): int
     {
         if (method_exists($exception, 'getStatusCode')) {
             return $exception->getStatusCode();
         }
 
-        $exceptionClass = get_class($exception);
-        
-        // Use strpos instead of str_contains for PHP 7.2 compatibility
-        if (strpos($exceptionClass, 'NotFound') !== false) {
-            return Response::HTTP_NOT_FOUND;
-        }
-        if (strpos($exceptionClass, 'AccessDenied') !== false) {
-            return Response::HTTP_FORBIDDEN;
-        }
-        if (strpos($exceptionClass, 'Unauthorized') !== false) {
-            return Response::HTTP_UNAUTHORIZED;
-        }
-        if (strpos($exceptionClass, 'BadRequest') !== false) {
-            return Response::HTTP_BAD_REQUEST;
-        }
-        if (strpos($exceptionClass, 'MethodNotAllowed') !== false) {
-            return Response::HTTP_METHOD_NOT_ALLOWED;
-        }
-        
-        return Response::HTTP_INTERNAL_SERVER_ERROR;
+        $exceptionClass = $exception::class;
+
+        return match (true) {
+            str_contains($exceptionClass, 'NotFound') => Response::HTTP_NOT_FOUND,
+            str_contains($exceptionClass, 'AccessDenied') => Response::HTTP_FORBIDDEN,
+            str_contains($exceptionClass, 'Unauthorized') => Response::HTTP_UNAUTHORIZED,
+            str_contains($exceptionClass, 'BadRequest') => Response::HTTP_BAD_REQUEST,
+            str_contains($exceptionClass, 'MethodNotAllowed') => Response::HTTP_METHOD_NOT_ALLOWED,
+            str_contains($exceptionClass, 'TooManyRequests') => Response::HTTP_TOO_MANY_REQUESTS,
+            str_contains($exceptionClass, 'Conflict') => Response::HTTP_CONFLICT,
+            str_contains($exceptionClass, 'UnprocessableEntity') => Response::HTTP_UNPROCESSABLE_ENTITY,
+            default => Response::HTTP_INTERNAL_SERVER_ERROR,
+        };
     }
 }
