@@ -1,0 +1,18 @@
+# Dependencies
+/vendor/
+
+# Testing
+.phpunit.cache/
+coverage-html/
+coverage.xml
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

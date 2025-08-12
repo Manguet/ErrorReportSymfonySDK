@@ -1,0 +1,125 @@
+# Enhanced Error Reporter Configuration with all modern services
+error_reporter:
+    # Required: Basic configuration
+    webhook_url: '%env(ERROR_WEBHOOK_URL)%'
+    token: '%env(ERROR_WEBHOOK_TOKEN)%'
+    project_name: '%env(PROJECT_NAME)%'
+    
+    # Optional: Feature toggles
+    enabled: '%env(bool:ERROR_REPORTING_ENABLED)%'
+    minimum_level: 'error'  # debug, info, warning, error, critical, alert, emergency
+    
+    # Optional: Exception filtering
+    ignore_exceptions:
+        - 'Symfony\Component\Security\Core\Exception\AccessDeniedException'
+        - 'Symfony\Component\HttpKernel\Exception\NotFoundHttpException'
+        - 'Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException'
+    
+    # Optional: HTTP client configuration
+    http_client:
+        timeout: 5           # seconds
+        max_retries: 3       # retry attempts
+        verify_ssl: true     # SSL verification
+    
+    # Optional: Breadcrumb configuration
+    breadcrumbs:
+        enabled: true
+        max_breadcrumbs: 50  # 10-100 allowed
+
+    # Enhanced services configuration
+    services:
+        # Quota management
+        quota:
+            enabled: true
+            daily_limit: 1000
+            monthly_limit: 10000
+            payload_size_limit: 512000  # 500KB
+            burst_limit: 10
+            burst_window_ms: 60000      # 1 minute
+        
+        # Rate limiting
+        rate_limiter:
+            enabled: true
+            requests_per_minute: 60
+            duplicate_window: 300       # 5 minutes
+        
+        # Offline management
+        offline:
+            enabled: true
+            max_queue_size: 50
+            max_age: 86400             # 24 hours
+        
+        # Batch processing
+        batch:
+            enabled: true
+            batch_size: 10
+            batch_timeout: 5000        # 5 seconds
+        
+        # Compression
+        compression:
+            enabled: true
+            threshold: 1024            # 1KB
+            level: 6                   # gzip level
+        
+        # Circuit breaker
+        circuit_breaker:
+            enabled: true
+            failure_threshold: 5
+            timeout: 30000             # 30 seconds
+            half_open_requests: 3
+        
+        # Retry logic
+        retry:
+            enabled: true
+            max_attempts: 3
+            delay: 1000               # 1 second
+            exponential_base: 2
+        
+        # Security validation
+        security:
+            enabled: true
+            validate_payloads: true
+            sanitize_sensitive_data: true
+        
+        # SDK monitoring
+        monitor:
+            enabled: true
+            track_performance: true
+            health_checks: true
+
+# Environment-specific overrides
+when@dev:
+    error_reporter:
+        enabled: false       # Disable in development
+        minimum_level: 'debug'
+        services:
+            quota:
+                daily_limit: 100
+            rate_limiter:
+                requests_per_minute: 10
+
+when@test:
+    error_reporter:
+        enabled: false       # Disable in tests
+        services:
+            quota:
+                enabled: false
+            rate_limiter:
+                enabled: false
+            circuit_breaker:
+                enabled: false
+
+when@prod:
+    error_reporter:
+        enabled: true
+        minimum_level: 'error'
+        http_client:
+            timeout: 10      # Longer timeout in production
+            max_retries: 5
+        services:
+            quota:
+                daily_limit: 2000
+                monthly_limit: 50000
+            circuit_breaker:
+                failure_threshold: 3
+                timeout: 60000   # 1 minute

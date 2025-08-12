@@ -1,0 +1,45 @@
+# Modern Error Reporter Configuration for Symfony 6.x+
+error_reporter:
+    # Required: Basic configuration
+    webhook_url: '%env(ERROR_WEBHOOK_URL)%'
+    token: '%env(ERROR_WEBHOOK_TOKEN)%'
+    project_name: '%env(PROJECT_NAME)%'
+    
+    # Optional: Feature toggles
+    enabled: '%env(bool:ERROR_REPORTING_ENABLED)%'
+    minimum_level: 'error'  # debug, info, warning, error, critical, alert, emergency
+    
+    # Optional: Exception filtering
+    ignore_exceptions:
+        - 'Symfony\Component\Security\Core\Exception\AccessDeniedException'
+        - 'Symfony\Component\HttpKernel\Exception\NotFoundHttpException'
+        - 'Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException'
+    
+    # Optional: HTTP client configuration
+    http_client:
+        timeout: 5           # seconds
+        max_retries: 3       # retry attempts
+        verify_ssl: true     # SSL verification
+    
+    # Optional: Breadcrumb configuration
+    breadcrumbs:
+        enabled: true
+        max_breadcrumbs: 50  # 10-100 allowed
+
+# Environment-specific overrides
+when@dev:
+    error_reporter:
+        enabled: false       # Disable in development
+        minimum_level: 'debug'
+
+when@test:
+    error_reporter:
+        enabled: false       # Disable in tests
+
+when@prod:
+    error_reporter:
+        enabled: true
+        minimum_level: 'error'
+        http_client:
+            timeout: 10      # Longer timeout in production
+            max_retries: 5
